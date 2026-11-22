@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Ripple — short videos, posts, Pools and chats</title>
+  <meta name="description" content="Ripple: short videos, posts, Pools (communities) and chats. Free, no ads. Made by Brayden.">
+  <meta name="theme-color" content="#061a3d">
+  <meta property="og:site_name" content="Ripple">
+  <meta property="og:title" content="Ripple">
+  <meta property="og:description" content="Short videos, posts, Pools and chats. Free, no ads. Made by Brayden.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="icon-512.png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="#/"><svg viewBox="0 0 108 108" class="mark" aria-hidden="true"><use href="#drop"/></svg><span>Ripple</span></a>
+    <nav>
+      <a href="#/">Home</a>
+      <a href="#/shorts">Shorts</a>
+      <a href="#/explore">Explore</a>
+    </nav>
+    <form class="search" id="search"><input name="q" placeholder="Search people, #tags, Pools" autocomplete="off" aria-label="Search"></form>
+    <div id="me"></div>
+  </header>
+  <main id="view" aria-live="polite"></main>
+  <footer class="foot">
+    <a id="credit" href="#/">Made by Brayden</a> ·
+    <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a> ·
+    <a id="studio" href="#">Undertow Studio</a> · <a id="getapp" href="#">Get the Android app</a>
+    <div class="small">Free forever. No ads, no paywalls, no Pro tier.</div>
+  </footer>
+  <div id="modal" class="modal" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a2a6e"/><stop offset=".55" stop-color="#1250d6"/><stop offset="1" stop-color="#2f8cff"/></linearGradient>
+      <symbol id="drop" viewBox="0 0 108 108">
+        <rect width="108" height="108" rx="28" fill="url(#g)"/>
+        <ellipse cx="54" cy="74" rx="24" ry="6.5" fill="none" stroke="#fff" stroke-opacity=".5" stroke-width="2.6"/>
+        <ellipse cx="54" cy="74" rx="13" ry="3.4" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="2.6"/>
+        <path d="M54,22C54,22 40,38.5 40,49.5A14,14 0,0 0,68 49.5C68,38.5 54,22 54,22Z" fill="#fff"/>
+      </symbol>
+    </defs>
+  </svg>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
