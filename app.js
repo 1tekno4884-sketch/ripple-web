@@ -2,6 +2,8 @@
 // Public posts, shorts, profiles, Pools and tags without signing in; signed-in users can like, dislike,
 // comment, reply and follow.
 import { CONFIG } from "./config.js";
+import * as U2V from "./video.js";   // U2-video: Buoys, captions, speed, Rising Tide, Deep Dives, Currents, premieres
+import { flairAvatar, flairName, ribbonsHtml } from "./identity.js";   // U2-identity: banners + flair
 
 const API = CONFIG.apiUrl;
 const TOKEN_KEY = "ripple_token";
@@ -119,16 +121,16 @@ function avatar(key, name, big) {
 }
 
 // ------------------------------------------------------------------ session
-let me = null; // { user, role }
+let me = null; // { user, role, access }  (U2-identity: access = {dev, owner, admin} — badges.dev is only the stamp)
 async function loadMe() {
   if (!token) { me = null; return; }
-  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role }; } catch (e) { if (e.status === 401) setToken(null); me = null; }
+  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; }   // U2-identity catch (e) { if (e.status === 401) setToken(null); me = null; }
 }
 function renderMe() {
   const box = $("#me"); box.replaceChildren();
   if (!me) box.append(h("button", { onclick: () => signInModal() }, "Sign in"));
   else box.append(
-    h("a", { href: `#/u/${encodeURIComponent(me.user?.username ?? "")}`, title: "Your profile" }, avatar(me.user?.avatar, me.user?.displayName)),
+    h("a", { href: `#/u/${encodeURIComponent(me.user?.username ?? "")}`, title: "Your profile" }, flairAvatar(me.user, "", avatar(me.user?.avatar, me.user?.displayName))),   // U2-identity
     h("button", { class: "ghost", onclick: logout }, "Sign out"),
   );
 }
@@ -257,15 +259,21 @@ function postCard(p, full = false) {
   }
   const a = p.author || {};
   const head = h("div", { class: "post-head" },
-    h("a", { href: `#/u/${encodeURIComponent(a.username || "")}` }, avatar(a.avatar, a.name)),
+    h("a", { href: `#/u/${encodeURIComponent(a.username || "")}` }, flairAvatar(a, "", avatar(a.avatar, a.name))),   // U2-identity
     h("div", {},
-      h("div", {}, h("a", { href: `#/u/${encodeURIComponent(a.username || "")}`, class: "name" }, a.name || a.username, ...badges(a.badges, false))),
+      h("div", {}, h("a", { href: `#/u/${encodeURIComponent(a.username || "")}`, class: "name" }, flairName(a, a.name || a.username), ...badges(a.badges, false), ribbonsHtml(a, true))),
       h("div", { class: "meta" }, `@${a.username || ""} · ${ago(p.createdAt)}`, p.communityId ? " · " : "", p.communityId ? h("a", { href: `#/c/${encodeURIComponent(p.communityId)}` }, `p/${p.communityId}`) : "", p.editedAt ? " · edited" : "")));
   const body = [];
   if (p.removed) body.push(h("div", { class: "meta" }, "This post was removed by moderators."));
   if (p.title) body.push(h("div", { class: "title" }, p.title));
   if (p.text) body.push(rich(p.text));
   if (p.body) body.push(rich(full ? p.body : p.body.slice(0, 400) + (p.body.length > 400 ? "…" : "")));
+  // U2-social: Ripple Back / Tandem / Splice credit, video replies, Ask Me answers, the short's sound
+  const rk = { back: "↩ Ripple Back to ", tandem: "Tandem with ", splice: "Splice from " };
+  if (p.remixOf?.postId) body.push(h("div", { class: "meta" }, rk[p.remixOf.kind] || rk.back, h("a", { href: `#/p/${encodeURIComponent(p.remixOf.postId)}` }, "@" + (p.remixOf.username || ""))));
+  if (p.commentReply?.postId) body.push(h("div", { class: "meta" }, "💬 Video reply to ", h("a", { href: `#/p/${encodeURIComponent(p.commentReply.postId)}` }, "@" + (p.commentReply.username || "")), `: “${p.commentReply.text || ""}”`));
+  if (p.askAnswer?.text) body.push(h("div", { class: "meta" }, `❓ Asked: “${p.askAnswer.text}”`));
+  if (p.type === "short") body.push(h("div", { class: "meta" }, "♪ " + (p.sound?.title || `Original sound · @${a.username || ""}`)));
   const media = (p.media || []).filter((m) => m.b === "pub" && safeKey(m.key));
   if (media.length) {
     const box = h("div", { class: `media n${Math.min(media.length, 4)}` });
@@ -277,6 +285,7 @@ function postCard(p, full = false) {
       box.append(el);
     }
     body.push(box);
+    if (full && media.some((m) => m.kind === "video")) U2V.enhance(p, box, body, { h, api });   // U2-video
   }
   if (p.poll?.options) body.push(h("div", { class: "meta" }, ...p.poll.options.map((o, i) => h("div", {}, `${o} — ${p.poll.total ? Math.round(((p.poll.tally || {})[i] || 0) * 100 / p.poll.total) : 0}%`))));
   if (p.quoteOf && p.original && p.type !== "repost") body.push(h("div", { class: "card" }, postCard(p.original, false)));
@@ -333,7 +342,7 @@ async function list(path, render = postCard, empty = "Nothing here yet") {
 const enc = encodeURIComponent;
 const routes = {
   async ""() {
-    const tabs = h("div", { class: "tabs" }, h("a", { href: "#/", class: "on" }, me ? "For You" : "Latest"), h("a", { href: "#/shorts" }, "Shorts"), h("a", { href: "#/explore" }, "Trending"));
+    const tabs = h("div", { class: "tabs" }, h("a", { href: "#/", class: "on" }, me ? "For You" : "Latest"), h("a", { href: "#/shorts" }, "Shorts"), h("a", { href: "#/explore" }, "Trending"), h("a", { href: "#/rising" }, "Rising Tide"), h("a", { href: "#/deep" }, "Deep Dives"));   // U2-video: last two
     return [tabs, await list("/v1/feed/foryou?shorts=0", postCard, "Nothing posted yet — check back soon.")];
   },
   async explore() {
@@ -360,7 +369,8 @@ const routes = {
       const m = (p.media || [])[0];
       return h("section", { class: "short" },
         m && m.b === "pub" && safeKey(m.key) ? h("video", { src: mediaUrl(m), poster: m.thumb ? mediaUrl(m, true) : null, loop: true, muted: true, playsinline: true, controls: true }) : h("div", { class: "meta" }, "Private short"),
-        h("div", { class: "cap" }, h("a", { href: `#/u/${enc(p.author?.username || "")}`, style: "color:#fff;font-weight:700" }, p.author?.name || ""), rich(p.text || ""),
+        h("div", { class: "cap" }, h("a", { href: `#/u/${enc(p.author?.username || "")}`, style: "color:#fff;font-weight:700" }, flairName(p.author, p.author?.name || "")),   // U2-identity
+          rich(p.text || ""),
           h("a", { href: `#/p/${enc(p.id)}`, style: "color:#cfe3ff" }, `♥ ${fmt(p.counts?.up)} · 💬 ${fmt(p.counts?.comments)}`)));
     }));
     const io = new IntersectionObserver((es) => es.forEach((e) => { const v = e.target.querySelector("video"); if (!v) return; if (e.isIntersecting) v.play().catch(() => {}); else v.pause(); }), { threshold: 0.7 });
@@ -388,8 +398,11 @@ const routes = {
     };
     const tree = (pid, depth) => (byParent[pid] || []).sort((a, b) => (b.pinned - a.pinned) || ((b.counts?.score || 0) - (a.counts?.score || 0))).map((c) =>
       h("div", { class: "comment" },
-        h("div", { class: "meta" }, c.pinned ? "📌 " : "", h("a", { href: `#/u/${enc(c.author?.username || "")}` }, c.author?.name || c.author?.username || ""), ...badges(c.author?.badges, false), ` · ${ago(c.createdAt)} · ▲ ${fmt(c.counts?.score || 0)}`, c.editedAt && !c.deleted ? " · edited" : ""),
+        h("div", { class: "meta" }, c.pinned ? "📌 " : "", h("a", { href: `#/u/${enc(c.author?.username || "")}` }, flairName(c.author, c.author?.name || c.author?.username || "")), ...badges(c.author?.badges, false), ribbonsHtml(c.author, true),   // U2-identity
+           ` · ${ago(c.createdAt)} · ▲ ${fmt(c.counts?.score || 0)}`, c.editedAt && !c.deleted ? " · edited" : ""),
         c.deleted || c.removed ? h("div", { class: "meta" }, c.removed ? "[removed]" : "[deleted]") : rich(c.text),
+        c.hearted ? h("div", { class: "meta", style: "color:#e5484d" }, "♥ by creator") : "",   // U2-social
+        (c.videoReplies || []).length ? h("a", { class: "chip", href: `#/p/${enc(c.videoReplies[0])}` }, `▶ ${c.videoReplies.length} video repl${c.videoReplies.length === 1 ? "y" : "ies"}`) : "",
         !(c.deleted || c.removed) && String(c.gif || "").startsWith("sticker:") ? h("div", { class: "meta" }, "Sent a sticker — open the Ripple app to see it") : "",
         me ? h("button", { class: "ghost", onclick: () => replyBox(c) }, "Reply") : "",
         ...(depth < 8 ? tree(c.id, depth + 1) : [])));
@@ -422,8 +435,9 @@ const routes = {
     const bannerUrl = keyUrl(u.banner);
     const hero = h("div", { class: "hero" },
       h("div", { class: "banner", style: bannerUrl ? `background-image:url("${bannerUrl}")` : null }),
-      h("div", { class: "hero-body" }, avatar(u.avatar, u.displayName, true),
-        h("h1", { style: "margin:.2em 0 0" }, u.displayName || u.username, " ", ...badges(u.badges)),
+      h("div", { class: "hero-body" }, flairAvatar(u, "big", avatar(u.avatar, u.displayName, true)),   // U2-identity: flair, animated picture, banners
+        h("h1", { style: "margin:.2em 0 0" }, flairName(u, u.displayName || u.username), " ", ...badges(u.badges)),
+        ribbonsHtml(u),
         h("div", { class: "handle" }, `@${u.username}`, u.pronouns ? ` · ${u.pronouns}` : ""),
         u.tagline ? h("div", { style: "font-weight:600;margin-top:4px" }, u.tagline) : "",
         u.bio ? rich(u.bio) : "",
@@ -466,8 +480,8 @@ const routes = {
   async terms() { return legal("terms"); },
 };
 function userRow(u) {
-  return h("div", { class: "card post-head" }, avatar(u.avatar, u.displayName),
-    h("div", {}, h("a", { href: `#/u/${enc(u.username)}`, class: "name" }, u.displayName || u.username, ...badges(u.badges, false)), h("div", { class: "handle" }, `@${u.username}`)));
+  return h("div", { class: "card post-head" }, flairAvatar(u, "", avatar(u.avatar, u.displayName)),   // U2-identity
+    h("div", {}, h("a", { href: `#/u/${enc(u.username)}`, class: "name" }, flairName(u, u.displayName || u.username), ...badges(u.badges, false), ribbonsHtml(u, true)), h("div", { class: "handle" }, `@${u.username}`)));
 }
 
 async function legal(doc_) {
@@ -483,6 +497,8 @@ async function legal(doc_) {
   }
   return out.children.length ? out : h("div", { class: "empty" }, "Coming soon.");
 }
+
+Object.assign(routes, U2V.routes({ h, api, list, postCard, items }));   // U2-video
 
 async function route() {
   const [, name = "", ...rest] = location.hash.replace(/^#/, "").split("/");
