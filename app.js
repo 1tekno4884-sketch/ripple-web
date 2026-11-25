@@ -124,7 +124,8 @@ function avatar(key, name, big) {
 let me = null; // { user, role, access }  (U2-identity: access = {dev, owner, admin} — badges.dev is only the stamp)
 async function loadMe() {
   if (!token) { me = null; return; }
-  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; }   // U2-identity catch (e) { if (e.status === 401) setToken(null); me = null; }
+  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; }   // U2-identity
+  catch (e) { if (e.status === 401) setToken(null); me = null; }
 }
 function renderMe() {
   const box = $("#me"); box.replaceChildren();
