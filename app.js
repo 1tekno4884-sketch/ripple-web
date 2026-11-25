@@ -4,6 +4,7 @@
 import { CONFIG } from "./config.js";
 import * as U2V from "./video.js";   // U2-video: Buoys, captions, speed, Rising Tide, Deep Dives, Currents, premieres
 import { flairAvatar, flairName, ribbonsHtml } from "./identity.js";   // U2-identity: banners + flair
+import * as U3M from "./u3map.js";   // U3-social: Tide Map (beta ripple.tide_map)
 
 const API = CONFIG.apiUrl;
 const TOKEN_KEY = "ripple_token";
@@ -125,7 +126,7 @@ let me = null; // { user, role, access }  (U2-identity: access = {dev, owner, ad
 async function loadMe() {
   if (!token) { me = null; return; }
   try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; }   // U2-identity
-  catch (e) { if (e.status === 401) setToken(null); me = null; }
+  catch (e) { if (e.status === 401) setToken(null); me = null; }   // U3-social: this catch had been commented out by a merge (SyntaxError → blank site)
 }
 function renderMe() {
   const box = $("#me"); box.replaceChildren();
@@ -134,6 +135,7 @@ function renderMe() {
     h("a", { href: `#/u/${encodeURIComponent(me.user?.username ?? "")}`, title: "Your profile" }, flairAvatar(me.user, "", avatar(me.user?.avatar, me.user?.displayName))),   // U2-identity
     h("button", { class: "ghost", onclick: logout }, "Sign out"),
   );
+  if (me) U3M.betaOn("ripple.tide_map").then((on) => { if (on && me && !box.querySelector(".u3-maplink")) box.prepend(h("a", { class: "u3-maplink", href: "#/map", title: "Tide Map", "aria-label": "Tide Map", style: "display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;color:var(--text)" }, U3M.mapIcon())); });   // U3-social
 }
 async function logout() {
   try { await api("/v1/auth/logout", { method: "POST", body: {} }); } catch {}
@@ -500,6 +502,10 @@ async function legal(doc_) {
 }
 
 Object.assign(routes, U2V.routes({ h, api, list, postCard, items }));   // U2-video
+// U3-social: Tide Map at #/map (only renders for people with the ripple.tide_map beta; the page checks it)
+U3M.initU3({ api, apiBase: API, token: () => token, myId: () => me?.user?.id || null, avatarUrl: keyUrl, profileHref: (u) => `#/u/${encodeURIComponent(u?.username || "")}`,
+  betaId: "ripple.tide_map", mapHref: "#/map", toast });
+routes.map = U3M.hashRoute({ layout: "stack", title: "Tide Map" });
 
 async function route() {
   const [, name = "", ...rest] = location.hash.replace(/^#/, "").split("/");
