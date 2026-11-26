@@ -5,6 +5,8 @@ import { CONFIG } from "./config.js";
 import * as U2V from "./video.js";   // U2-video: Buoys, captions, speed, Rising Tide, Deep Dives, Currents, premieres
 import { flairAvatar, flairName, ribbonsHtml } from "./identity.js";   // U2-identity: banners + flair
 import * as U3M from "./u3map.js";   // U3-social: Tide Map (beta ripple.tide_map)
+import * as U4C from "./u4catchup.js";   // U4-fixes catch-up: Ripple Effect + Tide Report on the web
+import * as U4R from "./u4report.js";   // U4-fixes: unified reports + review queue (moderators)
 
 const API = CONFIG.apiUrl;
 const TOKEN_KEY = "ripple_token";
@@ -121,11 +123,23 @@ function avatar(key, name, big) {
   return u ? h("img", { class: "avatar" + (big ? " big" : ""), src: u, alt: "" }) : h("div", { class: "avatar" + (big ? " big" : "") }, String(name || "?").trim().slice(0, 1).toUpperCase());
 }
 
+// ------------------------------------------------------------------ U4-glassrs: Sea Glass follows the phone's look (settings.u3.glass)
+function applyGlass(settings) {
+  let st = settings;
+  if (typeof st === "string") { try { st = JSON.parse(st); } catch { st = null; } }
+  const g = (st && st.u3 && st.u3.glass) || {};
+  const root = document.documentElement;
+  root.classList.toggle("sea-glass", !!g.on);
+  root.classList.toggle("glass-tinted", !!(g.on && g.tinted));
+  root.classList.toggle("glass-solid", !!(g.on && g.reduceTransparency));
+  root.dataset.glass = String(g.strength || "Standard").toLowerCase();
+}
+
 // ------------------------------------------------------------------ session
 let me = null; // { user, role, access }  (U2-identity: access = {dev, owner, admin} — badges.dev is only the stamp)
 async function loadMe() {
   if (!token) { me = null; return; }
-  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; }   // U2-identity
+  try { const j = await api("/v1/me"); me = { user: j.user, role: j.role, access: j.access || null }; applyGlass(j.settings); }   // U2-identity; U4-glassrs
   catch (e) { if (e.status === 401) setToken(null); me = null; }   // U3-social: this catch had been commented out by a merge (SyntaxError → blank site)
 }
 function renderMe() {
@@ -315,6 +329,7 @@ function postCard(p, full = false) {
   const actions = h("div", { class: "actions" }, like, dis,
     h("a", { class: "act", href: `#/p/${encodeURIComponent(p.id)}`, style: "border-radius:999px;padding:.35em .85em" }, `💬 ${fmt((c.comments || 0) + (c.replies || 0))}`),
     h("button", { class: "act", onclick: () => { navigator.clipboard?.writeText(`${API}/p/${p.id}`); toast("Link copied"); } }, "Share"),
+    me && me.user?.id !== p.authorId ? h("button", { class: "act", title: "Report", onclick: () => U4R.openReport({ kind: p.type === "short" ? "short" : "post", targetId: p.id, ownerId: p.authorId, ownerName: "@" + (p.author?.username || ""), preview: (p.title || p.text || "").slice(0, 200) }) }, "Report") : "",   // U4-fixes
     h("span", { class: "meta", style: "margin-left:auto;align-self:center" }, `${fmt(c.views)} views`));
   const card = h("article", { class: "card" }, head, ...body, actions);
   if (!full) card.querySelector(".text")?.addEventListener("click", () => (location.hash = `#/p/${encodeURIComponent(p.id)}`));
@@ -384,7 +399,7 @@ const routes = {
     let p;
     try { p = await api(`/v1/posts/${enc(id)}`); }
     catch { return h("div", { class: "empty" }, "This post is private, was removed, or doesn't exist.", h("br"), "Open it in the Ripple app if you have access."); }
-    const out = [postCard(p, true)];
+    const out = [postCard(p, true), U4C.effectLink(p)];   // U4-fixes catch-up
     const replies = items(await api(`/v1/posts/${enc(id)}/replies`).catch(() => []));
     if (replies.length) { out.push(h("h3", {}, `Replies (${fmt(replies.length)})`)); replies.forEach((r) => out.push(postCard(r))); }
     const comments = items(await api(`/v1/posts/${enc(id)}/comments?sort=top`).catch(() => []));
@@ -408,6 +423,7 @@ const routes = {
         (c.videoReplies || []).length ? h("a", { class: "chip", href: `#/p/${enc(c.videoReplies[0])}` }, `▶ ${c.videoReplies.length} video repl${c.videoReplies.length === 1 ? "y" : "ies"}`) : "",
         !(c.deleted || c.removed) && String(c.gif || "").startsWith("sticker:") ? h("div", { class: "meta" }, "Sent a sticker — open the Ripple app to see it") : "",
         me ? h("button", { class: "ghost", onclick: () => replyBox(c) }, "Reply") : "",
+        me && me.user?.id !== c.authorId && !(c.deleted || c.removed) ? h("button", { class: "ghost", onclick: () => U4R.openReport({ kind: "comment", targetId: c.id, ownerId: c.authorId, ownerName: "@" + (c.author?.username || ""), preview: (c.text || "").slice(0, 200) }) }, "Report") : "",   // U4-fixes
         ...(depth < 8 ? tree(c.id, depth + 1) : [])));
     out.push(h("h3", {}, `Comments (${fmt(comments.length)})`));
     out.push(p.locked ? h("div", { class: "meta" }, "🔒 Comments are locked.") : me ? h("button", { onclick: () => replyBox(null) }, "Add a comment") : h("button", { class: "tonal", onclick: () => signInModal() }, "Sign in to comment"));
@@ -447,7 +463,7 @@ const routes = {
         h("div", {}, ...links.map((l) => h("a", { class: "chip", href: safeHref(l.url), rel: "noopener nofollow ugc", target: "_blank" }, l.label || l.url))),
         h("div", { class: "counts" }, h("span", {}, h("b", {}, fmt(u.counts?.posts)), " posts"), h("span", {}, h("b", {}, fmt(u.counts?.followers)), " followers"),
           h("span", {}, h("b", {}, fmt(u.counts?.following)), " following"), h("span", {}, h("b", {}, fmt(u.counts?.karma)), " karma")),
-        me?.user?.id !== u.id ? fb : ""));
+        me?.user?.id !== u.id ? h("div", { style: "display:flex;gap:8px;flex-wrap:wrap" }, fb, me ? h("button", { class: "tonal", onclick: () => U4R.openReport({ kind: "user", targetId: u.id, ownerId: u.id, ownerName: "@" + u.username, preview: "@" + u.username, onBlocked: () => location.reload() }) }, "Report") : "") : U4C.reportButton()));   // U4-fixes: Report   // U4-fixes catch-up: ✨ Tide Report
     if (u.private && !following && me?.user?.id !== u.id) return [hero, h("div", { class: "empty" }, "🔒 This account is private.")];
     return [hero, await list(`/v1/users/${enc(u.id)}/posts?kind=posts`, postCard, "No public posts yet.")];
   },
@@ -506,6 +522,10 @@ Object.assign(routes, U2V.routes({ h, api, list, postCard, items }));   // U2-vi
 U3M.initU3({ api, apiBase: API, token: () => token, myId: () => me?.user?.id || null, avatarUrl: keyUrl, profileHref: (u) => `#/u/${encodeURIComponent(u?.username || "")}`,
   betaId: "ripple.tide_map", mapHref: "#/map", toast });
 routes.map = U3M.hashRoute({ layout: "stack", title: "Tide Map" });
+// U4-fixes catch-up: #/effect/<postId> (Ripple Effect) and #/tide/<range> (Tide Report), both betas
+U4C.init({ h, api, postCard, avatar, keyUrl, fmt, toast, me: () => me, betaOn: U3M.betaOn });
+Object.assign(routes, U4C.routes());
+U4R.initReports({ api, apiBase: API, token: () => token, toast });   // U4-fixes: #/reports (yours), #/mod (review queue, moderators)
 
 async function route() {
   const [, name = "", ...rest] = location.hash.replace(/^#/, "").split("/");
